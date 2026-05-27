@@ -80,10 +80,9 @@ def fetch_articles():
     return unique[:5]
 
 
-def get_summary(article_url):
-    def get_image(article_url):
-        try:
-            html = get_html(article_url)
+def get_image(article_url):
+    try:
+        html = get_html(article_url)
         soup = BeautifulSoup(html, "html.parser")
 
         og_image = soup.find("meta", attrs={"property": "og:image"})
@@ -94,6 +93,10 @@ def get_summary(article_url):
         if twitter_image and twitter_image.get("content"):
             return twitter_image.get("content")
 
+        return None
+
+    except Exception as e:
+        print("获取图片失败：", e)
         return None
 
     except Exception as e:
