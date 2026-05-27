@@ -82,7 +82,7 @@ def fetch_articles():
 
 def get_summary(article_url):
     def get_image(article_url):
-    try:
+        try:
         html = get_html(article_url)
         soup = BeautifulSoup(html, "html.parser")
 
