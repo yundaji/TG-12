@@ -1,41 +1,25 @@
 import os
-import json
-import time
-import re
 import requests
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin
-
-SITE_URL = "https://www.zaobao.com.sg/realtime"
-BASE_URL = "https://www.zaobao.com.sg"
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-SEEN_FILE = "seen.json"
+print("开始测试 Telegram 发送")
+print("BOT_TOKEN 是否存在：", bool(BOT_TOKEN))
+print("CHAT_ID 是否存在：", bool(CHAT_ID))
 
+url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-def load_seen():
-    if os.path.exists(SEEN_FILE):
-        with open(SEEN_FILE, "r", encoding="utf-8") as f:
-            return set(json.load(f))
-    return set()
+data = {
+    "chat_id": CHAT_ID,
+    "text": "测试消息：如果你看到这条，说明 Telegram 连接成功。"
+}
 
+response = requests.post(url, data=data, timeout=20)
 
-def save_seen(seen):
-    with open(SEEN_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(seen)[-300:], f, ensure_ascii=False, indent=2)
+print("Telegram 返回状态码：", response.status_code)
+print("Telegram 返回内容：", response.text)
 
+response.raise_for_status()
 
-def clean_text(text):
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-
-def fetch_articles():
-    headers = {"User-Agent": "Mozilla/5.0"}
-
-    response = requests.get(SITE_URL, headers=headers, timeout=20)
-    response.raise_for_status()
-
-    BeautifulSoup(response.text, "html.parser")
+print("测试完成")
