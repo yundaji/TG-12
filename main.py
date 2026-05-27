@@ -81,6 +81,24 @@ def fetch_articles():
 
 
 def get_summary(article_url):
+    def get_image(article_url):
+    try:
+        html = get_html(article_url)
+        soup = BeautifulSoup(html, "html.parser")
+
+        og_image = soup.find("meta", attrs={"property": "og:image"})
+        if og_image and og_image.get("content"):
+            return og_image.get("content")
+
+        twitter_image = soup.find("meta", attrs={"name": "twitter:image"})
+        if twitter_image and twitter_image.get("content"):
+            return twitter_image.get("content")
+
+        return None
+
+    except Exception as e:
+        print("获取图片失败：", e)
+        return None
     try:
         html = get_html(article_url)
         soup = BeautifulSoup(html, "html.parser")
@@ -144,7 +162,37 @@ def main():
             continue
 
         summary = get_summary(link)
-        send_to_telegram(title, summary)
+image_url = get_image(link)
+send_to_telegram(title, summary, image_url)
+image_url = get_image(link)
+send_to_telegram(title, summary, image_url)
+    caption = f"""📰 {title}
+
+大概内容：
+{summary}
+"""
+
+    if image_url:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+
+        response = requests.post(url, data={
+            "chat_id": CHAT_ID,
+            "photo": image_url,
+            "caption": caption[:1000]
+        }, timeout=20)
+    else:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+        response = requests.post(url, data={
+            "chat_id": CHAT_ID,
+            "text": caption,
+            "disable_web_page_preview": True
+        }, timeout=20)
+
+    print("Telegram 状态：", response.status_code)
+    print("Telegram 返回：", response.text)
+
+    response.raise_for_status()
 
         seen.add(link)
         count += 1
