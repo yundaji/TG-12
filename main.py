@@ -90,8 +90,7 @@ def get_summary(article_url):
 
         og_desc = soup.find("meta", attrs={"property": "og:description"})
         if og_desc and og_desc.get("content"):
-            return clean_text(og_desc.get("content"))[:5
-            00]
+            return clean_text(og_desc.get("content"))[:500]
 
         paragraphs = []
 
