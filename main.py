@@ -20,10 +20,11 @@ def clean_text(text):
 def load_seen():
     if not os.path.exists(SEEN_FILE):
         return set()
+
     try:
         with open(SEEN_FILE, "r", encoding="utf-8") as f:
             return set(json.load(f))
-    except:
+    except Exception:
         return set()
 
 
@@ -37,6 +38,7 @@ def get_html(url):
         "User-Agent": "Mozilla/5.0",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     }
+
     r = requests.get(url, headers=headers, timeout=20)
     r.raise_for_status()
     return r.text
@@ -55,10 +57,7 @@ def fetch_articles():
         if len(title) < 8:
             continue
 
-        if "zaobao.com.sg" in href:
-            link = href
-        else:
-            link = urljoin(BASE_URL, href)
+        link = urljoin(BASE_URL, href)
 
         if "/realtime/" not in link and "/news/" not in link:
             continue
@@ -80,6 +79,36 @@ def fetch_articles():
     return unique[:5]
 
 
+def get_summary(article_url):
+    try:
+        html = get_html(article_url)
+        soup = BeautifulSoup(html, "html.parser")
+
+        desc = soup.find("meta", attrs={"name": "description"})
+        if desc and desc.get("content"):
+            return clean_text(desc.get("content"))[:300]
+
+        og_desc = soup.find("meta", attrs={"property": "og:description"})
+        if og_desc and og_desc.get("content"):
+            return clean_text(og_desc.get("content"))[:300]
+
+        paragraphs = []
+
+        for p in soup.find_all("p"):
+            text = clean_text(p.get_text())
+            if len(text) >= 20:
+                paragraphs.append(text)
+
+        if paragraphs:
+            return " ".join(paragraphs[:2])[:300]
+
+        return "暂无更多内容。"
+
+    except Exception as e:
+        print("获取大概内容失败：", e)
+        return "暂无更多内容。"
+
+
 def get_image(article_url):
     try:
         html = get_html(article_url)
@@ -99,51 +128,31 @@ def get_image(article_url):
         print("获取图片失败：", e)
         return None
 
-    except Exception as e:
-        print("获取图片失败：", e)
-        return None
-    try:
-        html = get_html(article_url)
-        soup = BeautifulSoup(html, "html.parser")
 
-        desc = soup.find("meta", attrs={"name": "description"})
-        if desc and desc.get("content"):
-            return clean_text(desc.get("content"))[:300]
-
-        og_desc = soup.find("meta", attrs={"property": "og:description"})
-        if og_desc and og_desc.get("content"):
-            return clean_text(og_desc.get("content"))[:300]
-
-        paragraphs = []
-        for p in soup.find_all("p"):
-            text = clean_text(p.get_text())
-            if len(text) >= 20:
-                paragraphs.append(text)
-
-        if paragraphs:
-            return " ".join(paragraphs[:2])[:300]
-
-        return "暂无更多内容。"
-
-    except Exception as e:
-        print("获取大概内容失败：", e)
-        return "暂无更多内容。"
-
-
-def send_to_telegram(title, summary):
-    text = f"""📰 {title}
+def send_to_telegram(title, summary, image_url=None):
+    caption = f"""📰 {title}
 
 大概内容：
 {summary}
 """
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    if image_url:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
 
-    response = requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": text,
-        "disable_web_page_preview": True
-    }, timeout=20)
+        response = requests.post(url, data={
+            "chat_id": CHAT_ID,
+            "photo": image_url,
+            "caption": caption[:1000]
+        }, timeout=20)
+
+    else:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+        response = requests.post(url, data={
+            "chat_id": CHAT_ID,
+            "text": caption,
+            "disable_web_page_preview": True
+        }, timeout=20)
 
     print("Telegram 状态：", response.status_code)
     print("Telegram 返回：", response.text)
@@ -165,37 +174,9 @@ def main():
             continue
 
         summary = get_summary(link)
-image_url = get_image(link)
-send_to_telegram(title, summary, image_url)
-image_url = get_image(link)
-send_to_telegram(title, summary, image_url)
-    caption = f"""📰 {title}
+        image_url = get_image(link)
 
-大概内容：
-{summary}
-"""
-
-    if image_url:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-
-        response = requests.post(url, data={
-            "chat_id": CHAT_ID,
-            "photo": image_url,
-            "caption": caption[:1000]
-        }, timeout=20)
-    else:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-        response = requests.post(url, data={
-            "chat_id": CHAT_ID,
-            "text": caption,
-            "disable_web_page_preview": True
-        }, timeout=20)
-
-    print("Telegram 状态：", response.status_code)
-    print("Telegram 返回：", response.text)
-
-    response.raise_for_status()
+        send_to_telegram(title, summary, image_url)
 
         seen.add(link)
         count += 1
