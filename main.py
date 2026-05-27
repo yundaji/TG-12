@@ -38,4 +38,4 @@ def fetch_articles():
     response = requests.get(SITE_URL, headers=headers, timeout=20)
     response.raise_for_status()
 
-    soup = BeautifulSoup(response.text, "html
+    BeautifulSoup(response.text, "html.parser")
