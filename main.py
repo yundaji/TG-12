@@ -86,11 +86,12 @@ def get_summary(article_url):
 
         desc = soup.find("meta", attrs={"name": "description"})
         if desc and desc.get("content"):
-            return clean_text(desc.get("content"))[:300]
+            return clean_text(desc.get("content"))[:500]
 
         og_desc = soup.find("meta", attrs={"property": "og:description"})
         if og_desc and og_desc.get("content"):
-            return clean_text(og_desc.get("content"))[:300]
+            return clean_text(og_desc.get("content"))[:5
+            00]
 
         paragraphs = []
 
@@ -100,7 +101,7 @@ def get_summary(article_url):
                 paragraphs.append(text)
 
         if paragraphs:
-            return " ".join(paragraphs[:2])[:300]
+            return " ".join(paragraphs[:5])[:500]
 
         return "暂无更多内容。"
 
