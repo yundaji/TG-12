@@ -14,7 +14,11 @@ SEEN_FILE = "seen.json"
 
 
 def clean_text(text):
-    return re.sub(r"\s+", " ", text or "").strip()
+    text = re.sub(r"https?://\S+", "", text or "")
+    text = text.replace("www.zaobao.com.sg", "")
+    text = text.replace("zaobao.com.sg", "")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
 
 def load_seen():
@@ -62,6 +66,9 @@ def fetch_articles():
         if "/realtime/" not in link and "/news/" not in link:
             continue
 
+        if "story" not in link:
+            continue
+
         articles.append({
             "title": title,
             "link": link
@@ -79,33 +86,91 @@ def fetch_articles():
     return unique[:5]
 
 
+def format_summary(paragraphs):
+    clean_paragraphs = []
+
+    total_len = 0
+
+    for p in paragraphs:
+        p = clean_text(p)
+
+        if not p:
+            continue
+
+        if len(p) < 10:
+            continue
+
+        # 最多控制在600字以内
+        if total_len + len(p) > 600:
+            remaining = 600 - total_len
+
+            if remaining >= 80:
+                cut_text = p[:remaining]
+
+                last_punc = max(
+                    cut_text.rfind("。"),
+                    cut_text.rfind("！"),
+                    cut_text.rfind("？")
+                )
+
+                if last_punc > 50:
+                    cut_text = cut_text[:last_punc + 1]
+
+                clean_paragraphs.append(cut_text)
+
+            break
+
+        clean_paragraphs.append(p)
+        total_len += len(p)
+
+        # 满300字以上就可以停止
+        if total_len >= 300:
+            break
+
+    if not clean_paragraphs:
+        return "暂无更多内容。"
+
+    return "\n\n".join(clean_paragraphs)
+
+
 def get_summary(article_url):
     try:
         html = get_html(article_url)
         soup = BeautifulSoup(html, "html.parser")
 
+        paragraphs = []
+
+        # 优先抓文章正文里的段落
+        article_tag = soup.find("article")
+        if article_tag:
+            for p in article_tag.find_all("p"):
+                text = clean_text(p.get_text())
+                if len(text) >= 20:
+                    paragraphs.append(text)
+
+        # 如果 article 里没抓到，就抓全页 p 标签
+        if not paragraphs:
+            for p in soup.find_all("p"):
+                text = clean_text(p.get_text())
+                if len(text) >= 20:
+                    paragraphs.append(text)
+
+        if paragraphs:
+            return format_summary(paragraphs)
+
+        # 如果正文抓不到，再用网页描述
         desc = soup.find("meta", attrs={"name": "description"})
         if desc and desc.get("content"):
-            return clean_text(desc.get("content"))[:500]
+            return format_summary([desc.get("content")])
 
         og_desc = soup.find("meta", attrs={"property": "og:description"})
         if og_desc and og_desc.get("content"):
-            return clean_text(og_desc.get("content"))[:500]
-
-        paragraphs = []
-
-        for p in soup.find_all("p"):
-            text = clean_text(p.get_text())
-            if len(text) >= 20:
-                paragraphs.append(text)
-
-        if paragraphs:
-            return " ".join(paragraphs[:5])[:500]
+            return format_summary([og_desc.get("content")])
 
         return "暂无更多内容。"
 
     except Exception as e:
-        print("获取大概内容失败：", e)
+        print("获取内容失败：", e)
         return "暂无更多内容。"
 
 
@@ -114,13 +179,38 @@ def get_image(article_url):
         html = get_html(article_url)
         soup = BeautifulSoup(html, "html.parser")
 
+        # 优先抓正文里的图片
+        article_tag = soup.find("article")
+        if article_tag:
+            for img in article_tag.find_all("img"):
+                img_url = img.get("src") or img.get("data-src") or img.get("data-original")
+
+                if not img_url:
+                    continue
+
+                img_url = urljoin(BASE_URL, img_url)
+
+                bad_words = ["logo", "icon", "avatar", "default", "placeholder", "social-share"]
+                if any(word in img_url.lower() for word in bad_words):
+                    continue
+
+                return img_url
+
+        # 再抓 og:image
         og_image = soup.find("meta", attrs={"property": "og:image"})
         if og_image and og_image.get("content"):
-            return og_image.get("content")
+            img_url = og_image.get("content")
 
+            if "social-share" not in img_url.lower():
+                return img_url
+
+        # 再抓 twitter:image
         twitter_image = soup.find("meta", attrs={"name": "twitter:image"})
         if twitter_image and twitter_image.get("content"):
-            return twitter_image.get("content")
+            img_url = twitter_image.get("content")
+
+            if "social-share" not in img_url.lower():
+                return img_url
 
         return None
 
@@ -132,7 +222,6 @@ def get_image(article_url):
 def send_to_telegram(title, summary, image_url=None):
     caption = f"""📰 {title}
 
-大概内容：
 {summary}
 """
 
@@ -161,6 +250,14 @@ def send_to_telegram(title, summary, image_url=None):
 
 
 def main():
+    if not BOT_TOKEN:
+        print("错误：没有设置 BOT_TOKEN")
+        return
+
+    if not CHAT_ID:
+        print("错误：没有设置 CHAT_ID")
+        return
+
     seen = load_seen()
     articles = fetch_articles()
 
@@ -175,6 +272,10 @@ def main():
 
         summary = get_summary(link)
         image_url = get_image(link)
+
+        print("标题：", title)
+        print("内容字数：", len(summary.replace("\n", "")))
+        print("图片：", image_url)
 
         send_to_telegram(title, summary, image_url)
 
