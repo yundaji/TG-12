@@ -161,7 +161,7 @@ def get_image(article_url):
                 if not img_url:
                     continue
                 img_url = urljoin(BASE_URL, img_url)
-                bad_words = ["logo", "icon", "avatar", "default", "placeholder", "social-share"]
+                bad_words = ["logo", "icon", "avatar", "default", "placeholder", "social-share", ".svg"]
                 if any(word in img_url.lower() for word in bad_words):
                     continue
                 return img_url
@@ -169,13 +169,13 @@ def get_image(article_url):
         og_image = soup.find("meta", attrs={"property": "og:image"})
         if og_image and og_image.get("content"):
             img_url = og_image.get("content")
-            if "social-share" not in img_url.lower():
+            if "social-share" not in img_url.lower() and not img_url.lower().endswith(".svg"):
                 return img_url
 
         twitter_image = soup.find("meta", attrs={"name": "twitter:image"})
         if twitter_image and twitter_image.get("content"):
             img_url = twitter_image.get("content")
-            if "social-share" not in img_url.lower():
+            if "social-share" not in img_url.lower() and not img_url.lower().endswith(".svg"):
                 return img_url
 
         return None
@@ -186,24 +186,47 @@ def get_image(article_url):
 
 def send_to_telegram(title, summary, image_url=None, chat_id=None):
     caption = f"📰 {title}\n\n{summary}"
-    if image_url:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-        response = requests.post(url, data={
-            "chat_id": chat_id,
-            "photo": image_url,
-            "caption": caption[:1000]
-        }, timeout=20)
-    else:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        response = requests.post(url, data={
-            "chat_id": chat_id,
-            "text": caption,
-            "disable_web_page_preview": True
-        }, timeout=20)
 
-    print(f"Telegram 频道 {chat_id} 状态：", response.status_code)
-    print(f"Telegram 频道 {chat_id} 返回：", response.text)
-    response.raise_for_status()
+    # 如果图片是 svg 或无效，直接不要发图片
+    if image_url and image_url.lower().endswith(".svg"):
+        image_url = None
+
+    try:
+        if image_url:
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+            response = requests.post(url, data={
+                "chat_id": chat_id,
+                "photo": image_url,
+                "caption": caption[:1000]
+            }, timeout=20)
+
+            print(f"Telegram 频道 {chat_id} 状态：", response.status_code)
+            print(f"Telegram 频道 {chat_id} 返回：", response.text)
+
+            # 图片发送失败，改为文字发送
+            if response.status_code != 200:
+                print("图片发送失败，改为发送文字消息")
+                url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+                response = requests.post(url, data={
+                    "chat_id": chat_id,
+                    "text": caption,
+                    "disable_web_page_preview": True
+                }, timeout=20)
+                print(f"Telegram 频道 {chat_id} 文字消息状态：", response.status_code)
+                print(f"Telegram 频道 {chat_id} 文字消息返回：", response.text)
+        else:
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            response = requests.post(url, data={
+                "chat_id": chat_id,
+                "text": caption,
+                "disable_web_page_preview": True
+            }, timeout=20)
+            print(f"Telegram 频道 {chat_id} 状态：", response.status_code)
+            print(f"Telegram 频道 {chat_id} 返回：", response.text)
+
+        response.raise_for_status()
+    except Exception as e:
+        print("发送消息失败：", e)
 
 
 def main():
